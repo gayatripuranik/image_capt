@@ -1,0 +1,448 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multilingual Image Caption to Speech</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+        .upload-area:hover {
+            border-color: #aaa;
+        }
+        .hidden {
+            display: none;
+        }
+        .result {
+            margin-top: 30px;
+            display: none;
+        }
+        .result img {
+            max-width: 100%;
+            max-height: 400px;
+            display: block;
+            margin: 0 auto 20px;
+            border-radius: 4px;
+        }
+        .caption {
+            font-size: 18px;
+            background-color: #eef;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .original-caption {
+            font-size: 16px;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            color: #666;
+        }
+        button {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #3367d6;
+        }
+        .audio-controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        #loading {
+            text-align: center;
+            display: none;
+            margin: 20px 0;
+        }
+        #imagePreview {
+            max-width: 100%;
+            max-height: 200px;
+            margin-top: 10px;
+            display: none;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            background-color: #e0e0e0;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+        }
+        .tab.active {
+            background-color: #4285f4;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        #webcamContainer {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        #webcam {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+        }
+        .button-group {
+            text-align: center;
+            margin-top: 10px;
+        }
+        .language-selector {
+            margin: 20px 0;
+            text-align: center;
+        }
+        select {
+            padding: 8px 15px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .language-label {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .language-info {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Multilingual Image Caption to Speech</h1>
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" data-tab="upload">Upload Image</div>
+            <div class="tab" data-tab="webcam">Use Webcam</div>
+        </div>
+
+        <div class="language-selector">
+            <div class="language-label">Select Output Language:</div>
+            <select id="languageSelect">
+                {% for code, lang in languages.items() %}
+                <option value="{{ code }}">{{ lang.name }}</option>
+                {% endfor %}
+            </select>
+            <div class="language-info">Caption will be generated in English and translated to your selected language</div>
+        </div>
+
+        <div class="tab-content active" id="upload-tab">
+            <div class="upload-area" id="uploadArea">
+                <p>Click to upload an image or drag and drop</p>
+                <input type="file" id="imageInput" accept="image/*" class="hidden">
+                <img id="imagePreview" src="" alt="Preview">
+            </div>
+
+            <div style="text-align: center;">
+                <button id="processBtn" disabled>Generate Caption & Audio</button>
+            </div>
+        </div>
+
+        <div class="tab-content" id="webcam-tab">
+            <div id="webcamContainer">
+                <video id="webcam" autoplay playsinline></video>
+            </div>
+            <div class="button-group">
+                <button id="startWebcamBtn">Start Webcam</button>
+                <button id="captureBtn" disabled>Capture Image</button>
+            </div>
+        </div>
+
+        <div id="loading">
+            <p>Processing your image... Please wait</p>
+        </div>
+
+        <div class="result" id="result">
+            <h2>Result</h2>
+            <div>
+                <img id="resultImage" src="" alt="Uploaded/Captured image">
+            </div>
+            <div class="caption" id="caption"></div>
+            <div class="original-caption" id="originalCaption"></div>
+            <div class="audio-controls">
+                <audio id="audioPlayer" controls></audio>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabId = tab.getAttribute('data-tab');
+
+                // Remove active class from all tabs and contents
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(c => c.classList.remove('active'));
+
+                // Add active class to current tab and content
+                tab.classList.add('active');
+                document.getElementById(`${tabId}-tab`).classList.add('active');
+            });
+        });
+
+        // Upload Image Tab
+        const uploadArea = document.getElementById('uploadArea');
+        const imageInput = document.getElementById('imageInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const processBtn = document.getElementById('processBtn');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        const resultImage = document.getElementById('resultImage');
+        const captionElement = document.getElementById('caption');
+        const originalCaptionElement = document.getElementById('originalCaption');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const languageSelect = document.getElementById('languageSelect');
+
+        // Upload by click
+        uploadArea.addEventListener('click', () => {
+            imageInput.click();
+        });
+
+        // Preview image when selected
+        imageInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                    processBtn.disabled = false;
+                };
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+
+        // Drag and drop functionality
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() {
+            uploadArea.style.borderColor = '#4285f4';
+        }
+
+        function unhighlight() {
+            uploadArea.style.borderColor = '#ccc';
+        }
+
+        uploadArea.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+
+            if (files && files[0]) {
+                imageInput.files = files;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                    processBtn.disabled = false;
+                };
+                reader.readAsDataURL(files[0]);
+            }
+        }
+
+        // Process the image from file upload
+        processBtn.addEventListener('click', processUploadedImage);
+
+        async function processUploadedImage() {
+            if (!imageInput.files || !imageInput.files[0]) {
+                alert('Please select an image first');
+                return;
+            }
+
+            loading.style.display = 'block';
+            result.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('image', imageInput.files[0]);
+            formData.append('language', languageSelect.value);
+
+            try {
+                const response = await fetch('/process_image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert(`Error: ${data.error}`);
+                    return;
+                }
+
+                resultImage.src = data.image_url;
+                captionElement.textContent = data.caption;
+
+                // Show original caption if it's different from translated
+                if (data.caption_original !== data.caption) {
+                    originalCaptionElement.textContent = `English: ${data.caption_original}`;
+                    originalCaptionElement.style.display = 'block';
+                } else {
+                    originalCaptionElement.style.display = 'none';
+                }
+
+                audioPlayer.src = data.audio_url;
+
+                result.style.display = 'block';
+
+                // Auto-play the audio
+                audioPlayer.play();
+
+            } catch (error) {
+                alert('An error occurred. Please try again.');
+                console.error(error);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // Webcam functionality
+        const webcamVideo = document.getElementById('webcam');
+        const startWebcamBtn = document.getElementById('startWebcamBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        let stream = null;
+
+        startWebcamBtn.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+                webcamVideo.srcObject = stream;
+                startWebcamBtn.textContent = 'Restart Webcam';
+                captureBtn.disabled = false;
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                alert("Could not access the webcam. Please make sure you have granted camera permissions.");
+            }
+        });
+
+        captureBtn.addEventListener('click', async () => {
+            if (!stream) {
+                alert('Please start webcam first');
+                return;
+            }
+
+            // Create a canvas element to capture the current frame
+            const canvas = document.createElement('canvas');
+            canvas.width = webcamVideo.videoWidth;
+            canvas.height = webcamVideo.videoHeight;
+            const context = canvas.getContext('2d');
+            context.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
+
+            // Convert canvas to base64 image
+            const imageDataUrl = canvas.toDataURL('image/jpeg');
+
+            loading.style.display = 'block';
+            result.style.display = 'none';
+
+            try {
+                const response = await fetch('/process_image', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        webcam_image: imageDataUrl,
+                        language: languageSelect.value
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert(`Error: ${data.error}`);
+                    return;
+                }
+
+                resultImage.src = data.image_url;
+                captionElement.textContent = data.caption;
+
+                // Show original caption if it's different from translated
+                if (data.caption_original !== data.caption) {
+                    originalCaptionElement.textContent = `English: ${data.caption_original}`;
+                    originalCaptionElement.style.display = 'block';
+                } else {
+                    originalCaptionElement.style.display = 'none';
+                }
+
+                audioPlayer.src = data.audio_url;
+
+                result.style.display = 'block';
+
+                // Auto-play the audio
+                audioPlayer.play();
+
+            } catch (error) {
+                alert('An error occurred. Please try again.');
+                console.error(error);
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
